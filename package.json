@@ -1,0 +1,71 @@
+{
+  "name": "dsh-password-prompt",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin: a masked password input panel in the Web GUI. The agent calls the password_prompt tool, the browser pops an HTML password panel, and the typed value is returned to the agent — no interactive terminal needed.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "build:types": "tsc -p tsconfig.json",
+    "build:client": "tsdown"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "password",
+    "secret",
+    "cordis"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-user-questions": "*",
+    "@deepseek-ai/dsh-api-remotes": "*",
+    "@deepseek-ai/dsh-client-connection": "*",
+    "@deepseek-ai/dsh-client-runtime": "*",
+    "@deepseek-ai/dsh-client-ui-conversation": "*",
+    "@deepseek-ai/dsh-client-ui-slots": "*",
+    "@deepseek-ai/dsh-client-ui-primitives": "*",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.31",
+    "react": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}
