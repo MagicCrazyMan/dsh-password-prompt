@@ -34,25 +34,73 @@ It works on a **stock, unmodified** DSH installation.
 
 ## Install
 
-The package is distributed as a **bundle + dual-face plugin**: it declares `dsh.bundle` (a patch layer that activates the plugin automatically) and `dsh.client` (the browser half served to the Web GUI). Install from GitHub:
+The package is distributed as a **bundle + dual-face plugin**: it declares `dsh.bundle` (a patch layer that activates the plugin automatically) and `dsh.client` (the browser half served to the Web GUI). Anyone with a DSH installation can add it from GitHub with `dsh plugin add` — no manual `cordis.patch.yml` edits and no DSH core changes.
+
+### Quick start — new profile (recommended)
+
+Profiles are just directories under `$DSH_HOME/profiles/<name>` (default `~/.dsh/profiles/<name>`); one DSH installation manages any number of them, and the profile directory is auto-created on first use. `web` and `headless` are the only names with shipped templates; any other name initializes with `@deepseek-ai/dsh-base` alone.
+
+**1. Create the profile and install the plugin**
 
 ```sh
-# with `dsh` on PATH:
-dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt
-# from a DSH source checkout (source execution):
-pnpm dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt
+# from a DSH source checkout; omit the `pnpm` prefix when `dsh` is on PATH
+pnpm dsh plugin --profile demo add github:MagicCrazyMan/dsh-password-prompt
 ```
 
-This appends `dsh-password-prompt` to the profile's `dsh.profile.bundles`; the bundle's patch layer then inserts the `password-prompt` row — **no manual `cordis.patch.yml` edits needed**. Restart `dsh web` (plugin-set changes apply on restart).
+**2. Allow the install-time build (pnpm ≥ 10)**
 
-> **pnpm ≥ 10 note**: pnpm refuses to run a git dependency's `prepare` script until explicitly allowed, so the first `add` fails with a message naming the package. Copy the exact package key it printed into the profile's `pnpm-workspace.yaml` and re-run:
->
-> ```yaml
-> allowBuilds:
->   dsh-password-prompt: true
-> ```
->
-> Treat this as what it is: **permission to execute the package's build code on your machine at install time**. Only install from commits you trust — pin one (`github:MagicCrazyMan/dsh-password-prompt#<sha>`) so a later push cannot silently change what runs.
+The first `add` fails **by design**: pnpm refuses to run a git dependency's `prepare` script until it is explicitly allowed. The error prints the exact key to add — note it is **bound to the commit SHA**, not the package name:
+
+```yaml
+# in ~/.dsh/profiles/demo/pnpm-workspace.yaml
+allowBuilds:
+  dsh-password-prompt@https://codeload.github.com/MagicCrazyMan/dsh-password-prompt/tar.gz/<commit-sha>: true
+```
+
+Copy the full key pnpm printed (the `<commit-sha>` part differs per version), then re-run step 1. Every plugin update fetches a new SHA, so a later reinstall prints a new key — add it and re-run again.
+
+Treat this as what it is: **permission to execute the package's build code on your machine at install time**. Only install from commits you trust — pin one (`github:MagicCrazyMan/dsh-password-prompt#<sha>`) so a later push cannot silently change what runs.
+
+**3. Add the Web app bundle (only needed for a GUI profile)**
+
+A non-`web` profile starts with only `@deepseek-ai/dsh-base`, which has no Web UI. Do **not** try `dsh plugin add @deepseek-ai/dsh-web-app`: the npm-published `@deepseek-ai` packages are incomplete (internal packages such as `@deepseek-ai/dsh-client-ui-slash` are absent), so the pnpm install fails. In-box bundles resolve from the DSH installation itself — add the name to the profile manifest's `dsh.profile.bundles` by hand, exactly like the shipped `web` template:
+
+```json
+// ~/.dsh/profiles/demo/package.json
+{
+  "name": "dsh-profile-demo",
+  "private": true,
+  "dependencies": {
+    "dsh-password-prompt": "github:MagicCrazyMan/dsh-password-prompt"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-password-prompt"]
+    }
+  }
+}
+```
+
+**4. Boot and verify**
+
+```sh
+pnpm dsh --profile demo --host 127.0.0.1 --port 3082
+# in another shell (bypass any local HTTP proxy for loopback):
+curl --noproxy '*' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3082/        # → 200
+curl --noproxy '*' -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:3082/plugins/dsh-password-prompt/client.js                     # → 200
+```
+
+The bundle layer activates the `password-prompt` row automatically — confirm with `pnpm dsh --profile demo --dump-config | grep -A2 password-prompt`.
+
+### Install into the existing `web` profile
+
+The `web` profile already composes `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app` (shipped template; `dsh web` is an alias for `--profile web`), so only steps 1–2 apply:
+
+```sh
+pnpm dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt   # + allowBuilds, see above
+# restart the running web server — plugin-set changes apply on restart
+```
 
 ### Manual install (no `dsh` CLI, or from a local checkout)
 

@@ -36,25 +36,73 @@ agent calls password_prompt("SSH password for root@1.2.3.4")
 
 ## 安装
 
-该插件以 **bundle + 双面插件**形式分发：声明了 `dsh.bundle`（自动激活插件的补丁层）和 `dsh.client`（提供给 Web GUI 的浏览器端）。从 GitHub 安装：
+该插件以 **bundle + 双面插件**形式分发：声明了 `dsh.bundle`（自动激活插件的补丁层）和 `dsh.client`（提供给 Web GUI 的浏览器端）。任何 DSH 安装都可以用 `dsh plugin add` 从 GitHub 安装——**无需手工修改 `cordis.patch.yml`**，也无需改动 DSH 核心。
+
+### 快速开始 —— 新建 profile（推荐）
+
+Profile 只是 `$DSH_HOME/profiles/<名字>`（默认 `~/.dsh/profiles/<名字>`）下的目录；**一个 DSH 安装可以管理任意多个 profile**，首次使用时目录会自动创建。`web` 和 `headless` 是仅有的两个带内置模板的名字；其他名字初始化时只带 `@deepseek-ai/dsh-base`。
+
+**1. 创建 profile 并安装插件**
 
 ```sh
-# `dsh` 已在 PATH 中时：
-dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt
-# 从 DSH 源码 checkout（源码方式执行）：
-pnpm dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt
+# 从 DSH 源码 checkout 执行；`dsh` 在 PATH 中时可省略 `pnpm` 前缀
+pnpm dsh plugin --profile demo add github:MagicCrazyMan/dsh-password-prompt
 ```
 
-该命令会把 `dsh-password-prompt` 追加到 profile 的 `dsh.profile.bundles`；随后 bundle 的补丁层会自动插入 `password-prompt` 行——**无需手工修改 `cordis.patch.yml`**。重启 `dsh web`（插件集的变更在重启后生效）。
+**2. 放行安装期构建（pnpm ≥ 10）**
 
-> **pnpm ≥ 10 注意**：pnpm 在显式允许之前，拒绝运行 git 依赖的 `prepare` 脚本，因此第一次 `add` 会失败并提示包含包名的信息。把 pnpm 打印出的确切包名 key 复制到 profile 的 `pnpm-workspace.yaml` 中，然后重新执行：
->
-> ```yaml
-> allowBuilds:
->   dsh-password-prompt: true
-> ```
->
-> 请把它理解为它本来的含义：**允许在安装时于你的机器上执行该包的构建代码**。只安装你信任的提交——固定一个提交（`github:MagicCrazyMan/dsh-password-prompt#<sha>`），这样后续的 push 不会悄悄改变实际运行的代码。
+第一次 `add` **按设计会失败**：pnpm 在显式允许之前，拒绝运行 git 依赖的 `prepare` 脚本。错误信息会打印出需要添加的确切 key——注意它**绑定的是提交 SHA，不是包名**：
+
+```yaml
+# 写入 ~/.dsh/profiles/demo/pnpm-workspace.yaml
+allowBuilds:
+  dsh-password-prompt@https://codeload.github.com/MagicCrazyMan/dsh-password-prompt/tar.gz/<commit-sha>: true
+```
+
+把 pnpm 打印出的完整 key 复制进去（`<commit-sha>` 部分随版本不同），然后重新执行第 1 步。插件每次更新都会拉取新的 SHA，因此之后重装会打印新 key——添加后再次重跑即可。
+
+请把它理解为它本来的含义：**允许在安装时于你的机器上执行该包的构建代码**。只安装你信任的提交——固定一个提交（`github:MagicCrazyMan/dsh-password-prompt#<sha>`），这样后续的 push 不会悄悄改变实际运行的代码。
+
+**3. 添加 Web 应用 bundle（只有 GUI profile 需要）**
+
+非 `web` 名字的 profile 初始化时只有 `@deepseek-ai/dsh-base`，没有 Web 界面。**不要**用 `dsh plugin add @deepseek-ai/dsh-web-app` 尝试安装：npm 上发布的 `@deepseek-ai` 包不完整（`@deepseek-ai/dsh-client-ui-slash` 等内部包缺失），pnpm 安装会失败。in-box bundle 从 DSH 安装本体解析——直接手工把名字加进 profile manifest 的 `dsh.profile.bundles`，与内置 `web` 模板的结构完全一致：
+
+```json
+// ~/.dsh/profiles/demo/package.json
+{
+  "name": "dsh-profile-demo",
+  "private": true,
+  "dependencies": {
+    "dsh-password-prompt": "github:MagicCrazyMan/dsh-password-prompt"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-password-prompt"]
+    }
+  }
+}
+```
+
+**4. 启动并验证**
+
+```sh
+pnpm dsh --profile demo --host 127.0.0.1 --port 3082
+# 在另一个终端（loopback 请求需绕过本地 HTTP 代理）：
+curl --noproxy '*' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3082/        # → 200
+curl --noproxy '*' -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:3082/plugins/dsh-password-prompt/client.js                     # → 200
+```
+
+bundle 补丁层会自动激活 `password-prompt` 行——可用 `pnpm dsh --profile demo --dump-config | grep -A2 password-prompt` 确认。
+
+### 安装进现有的 `web` profile
+
+`web` profile 已经组合了 `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app`（内置模板；`dsh web` 是 `--profile web` 的别名），所以只需要第 1–2 步：
+
+```sh
+pnpm dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt   # + allowBuilds，见上文
+# 重启正在运行的 web 服务器 —— 插件集的变更在重启后生效
+```
 
 ### 手动安装（没有 `dsh` CLI，或从本地 checkout 安装）
 
