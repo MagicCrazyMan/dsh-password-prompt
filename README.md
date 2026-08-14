@@ -130,6 +130,17 @@ Tell the agent something like:
 
 The agent calls `password_prompt`, the masked panel pops up, you type, and the agent continues. **The value never enters the model context**: the tool writes it to the private 0600 file the agent named (`outFile`, e.g. `<cwd>/.dsh-secrets/ssh-pass`) and returns only that path. The agent feeds the command from the file — an askpass script that `cat`s it for SSH, `sudo -S < file` for sudo — then deletes the file. The model cannot echo a secret it never possessed.
 
+## Optional: companion skill
+
+A skill makes the agent **proactively** route every secret through `password_prompt` — before an `ssh`/`sudo`/remote-login command fails, and after a `Permission denied` — instead of relying on the tool description alone. Install the copy shipped in this repo:
+
+```bash
+mkdir -p ~/.dsh/skills/password-prompt
+cp skills/password-prompt/SKILL.md ~/.dsh/skills/password-prompt/SKILL.md
+```
+
+The skill is user-level (rank 400), so it applies to every profile/project. It shows up in the model's session skill catalog (the catalog may refresh live in the current session); its `description` is the trigger, so the agent loads it exactly when a task needs a secret.
+
 ## Security notes
 
 - **The password never reaches the model.** It travels browser → host RPC → a private 0600 file on disk, and the model sees only the file path. It therefore cannot appear in reasoning or chat output.

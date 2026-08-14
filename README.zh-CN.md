@@ -132,6 +132,17 @@ ln -s /path/to/dsh-password-prompt ~/.dsh/profiles/node_modules/dsh-password-pro
 
 智能体调用 `password_prompt`，掩码面板弹出，你输入密码，智能体继续执行。**密码值永远不会进入模型上下文**：该工具将其写入智能体指定的私有 0600 权限文件（`outFile`，例如 `<cwd>/.dsh-secrets/ssh-pass`），并且只返回该路径。智能体从文件中读取密码来执行命令——SSH 使用 `cat` 出密码的 askpass 脚本，sudo 使用 `sudo -S < file`——随后删除该文件。模型从未持有过密钥，自然无法复述它。
 
+## 可选：配套 skill
+
+skill 让智能体**主动**把所有密钥输入引导到 `password_prompt`——在 `ssh`/`sudo`/远程登录命令失败之前先问，或在收到 `Permission denied` 后走重试流程——而不只是依赖工具描述。安装本仓库随附的副本：
+
+```bash
+mkdir -p ~/.dsh/skills/password-prompt
+cp skills/password-prompt/SKILL.md ~/.dsh/skills/password-prompt/SKILL.md
+```
+
+该 skill 位于用户级（rank 400），对所有 profile/项目生效。它会出现在模型的会话 skill 目录中（当前会话也可能实时刷新）；它的 `description` 就是触发条件，智能体正好在任务需要密钥时加载它。
+
 ## 安全说明
 
 - **密码永远到不了模型那里。** 它经由浏览器 → 主机 RPC → 磁盘上的私有 0600 权限文件这一路径传输，模型只能看到文件路径，因此它不可能出现在推理过程或聊天输出中。
