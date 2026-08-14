@@ -23,16 +23,47 @@ import '@deepseek-ai/dsh-user-questions'
 import { PASSWORD_QUESTION_ID } from './shared.ts'
 
 export const name = 'password-prompt'
-export const inject = ['tools', 'userQuestions']
+export const inject = ['tools', 'userQuestions', 'systemPrompt']
+
+/** Prompt-section order: tool guidance lives in 100–199 (see system-prompt docs). */
+const SECRECY_SECTION_ORDER = 150
 
 const description = 'Ask the user to type a password (or other secret) into the masked password panel in the Web GUI, '
   + 'wait for their input, and return the value. '
   + 'Use this when a remote command or connection needs a secret only the user knows, '
-  + 'for example an SSH password: the panel input is masked, and the returned value is '
-  + 'meant to be passed straight into the command that needs it — do not repeat it in prose, '
-  + 'and do not write it into files on disk unless the user asks.'
+  + 'for example an SSH password. '
+  + 'SECRET HANDLING RULES — these are mandatory: '
+  + '(1) Never repeat the returned password in your own message text, summaries, titles, or file names — '
+  + 'not even masked or partial forms. '
+  + '(2) Pass the value only to the single command that needs it, in the same turn, '
+  + 'and never print it back. '
+  + '(3) Do not write the password into files on disk unless the user explicitly asks, '
+  + 'and delete any temporary file holding it as soon as the command finishes. '
+  + '(4) If you need the password again later, call this tool again instead of recalling it from memory. '
+  + 'The panel input and the rendered result card are already masked; your prose must stay masked too.'
+
+/** Secrecy rules injected into every assembled system prompt while this plugin is mounted. */
+const secrecySectionText = 'Passwords and other secrets the user typed into the password_prompt panel are confidential '
+  + 'and must never appear in your visible output. Concretely: '
+  + '(1) never echo the secret in your own message text, summaries, explanations, titles, or file names — '
+  + 'not even masked or partial forms; '
+  + '(2) pass the value only to the single command that needs it (for example an askpass script or an ssh invocation), '
+  + 'in the same turn, and never print it back; '
+  + '(3) do not write the secret into files on disk unless the user explicitly asks, and delete any temporary '
+  + 'file holding it as soon as the consuming command finishes; '
+  + '(4) never put the secret into tool arguments other than the command that consumes it; '
+  + '(5) if you need the secret again later, request it again through the password_prompt tool '
+  + 'instead of recalling it from memory or your transcript; '
+  + '(6) if you are about to include the secret anywhere, redact it (for example replace it with •••• or <redacted>) '
+  + 'before producing the output.'
 
 export function apply(ctx: Context): void {
+  ctx.systemPrompt.section({
+    name: 'tool:password-prompt',
+    order: SECRECY_SECTION_ORDER,
+    text: secrecySectionText,
+  })
+
   ctx.tools.register(defineTool({
     name: 'password_prompt',
     description,
