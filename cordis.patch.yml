@@ -1,0 +1,5 @@
+# dsh-password-prompt bundle layer: activates the plugin when a profile
+# lists this package in dsh.profile.bundles (via `dsh plugin add`).
+- insert:
+    - id: password-prompt
+      name: dsh-password-prompt

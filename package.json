@@ -18,6 +18,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
@@ -33,12 +36,14 @@
     "lib/index.js",
     "lib/client.js",
     "lib/client.js.map",
-    "lib/types/**/*.d.ts"
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && tsdown",
     "build:types": "tsc -p tsconfig.json",
-    "build:client": "tsdown"
+    "build:client": "tsdown",
+    "prepare": "tsdown"
   },
   "keywords": [
     "deepseek-harness",
@@ -49,6 +54,11 @@
     "cordis"
   ],
   "license": "MIT",
+  "author": "MagicCrazyMan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MagicCrazyMan/dsh-password-prompt.git"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-agent": "*",

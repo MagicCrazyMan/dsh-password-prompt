@@ -4,6 +4,14 @@ A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin tha
 
 When the agent calls the `password_prompt` tool, the browser pops the panel and waits. The user types the password (masked, with a show/hide toggle), and the value is returned to the agent, which can then use it — e.g. feed it to `ssh` through an askpass script.
 
+## ⚠️ SECURITY WARNING — READ BEFORE USE
+
+> **This plugin has NOT undergone strict security testing or any independent security audit.**
+>
+> **It provides NO guarantee whatsoever for the security, confidentiality, or integrity of any password handled through it.**
+>
+> **Before using this plugin, make sure you clearly understand and fully accept the security risks.** Do not use it with passwords for production, financial, or other highly sensitive systems unless you have personally reviewed the code and accepted the exposure. Use at your own risk.
+
 ```
 agent calls password_prompt("SSH password for root@1.2.3.4")
   └─ ctx.userQuestions.ask({ id: 'password', ... })     ← public seam, tool pauses
@@ -20,12 +28,33 @@ The plugin only uses public, shipped capability seams:
 - `ctx.userQuestions.ask()` — the same service behind the built-in `ask_user_question` tool (pauses the tool call until the UI answers).
 - The browser `conversation.composer` chain — a selector-routed slot; this plugin registers an entry at priority `-1` that claims single questions whose id is the reserved literal `password`, and every other question falls through to the generic composer untouched.
 - The dual-face plugin convention: a package declaring `dsh.client` + an `exports["./client"]` bundle is auto-scanned into `window.__DSH_BOOT__` and served at `/plugins/<id>/client.js`.
+- The `dsh.bundle` manifest: a `cordis.patch.yml` layer shipped inside the package, so `dsh plugin add` appends the plugin to the profile's bundle list and the `password-prompt` row activates with no manual patch edits.
 
 It works on a **stock, unmodified** DSH installation.
 
 ## Install
 
-The package is not yet published to npm. Install from a local checkout / git:
+The package is distributed as a **bundle + dual-face plugin**: it declares `dsh.bundle` (a patch layer that activates the plugin automatically) and `dsh.client` (the browser half served to the Web GUI). Install from GitHub:
+
+```sh
+# with `dsh` on PATH:
+dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt
+# from a DSH source checkout (source execution):
+pnpm dsh plugin --profile web add github:MagicCrazyMan/dsh-password-prompt
+```
+
+This appends `dsh-password-prompt` to the profile's `dsh.profile.bundles`; the bundle's patch layer then inserts the `password-prompt` row — **no manual `cordis.patch.yml` edits needed**. Restart `dsh web` (plugin-set changes apply on restart).
+
+> **pnpm ≥ 10 note**: pnpm refuses to run a git dependency's `prepare` script until explicitly allowed, so the first `add` fails with a message naming the package. Copy the exact package key it printed into the profile's `pnpm-workspace.yaml` and re-run:
+>
+> ```yaml
+> allowBuilds:
+>   dsh-password-prompt: true
+> ```
+>
+> Treat this as what it is: **permission to execute the package's build code on your machine at install time**. Only install from commits you trust — pin one (`github:MagicCrazyMan/dsh-password-prompt#<sha>`) so a later push cannot silently change what runs.
+
+### Manual install (no `dsh` CLI, or from a local checkout)
 
 ```bash
 # in your DSH profile tree (e.g. ~/.dsh/profiles/web), add the row:
@@ -41,7 +70,9 @@ ln -s /path/to/dsh-password-prompt ~/.dsh/profiles/node_modules/dsh-password-pro
 # restart `dsh web` — plugin-set changes apply on restart
 ```
 
-Once published to npm: `pnpm add dsh-password-prompt` in the profile tree (or the bundle package that owns your profile), keep the cordis row above, restart.
+### npm (once published)
+
+`dsh plugin --profile web add dsh-password-prompt` — the bundle layer activates the same row. Restart.
 
 ## Usage
 

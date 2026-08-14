@@ -34,7 +34,7 @@ export default defineConfig([
     // The host DSH installation provides the @deepseek-ai peer packages at
     // runtime (resolved through the profile tree's node_modules); the node
     // half must never inline them.
-    external: [/^@deepseek-ai\//],
+    deps: { neverBundle: [/^@deepseek-ai\//] },
   },
   {
     name: `${id}/client`,
@@ -45,7 +45,7 @@ export default defineConfig([
     dts: false,
     sourcemap: true,
     clean: false,
-    external: ['react', 'react/jsx-runtime'],
+    deps: { neverBundle: ['react', 'react/jsx-runtime'] },
     outputOptions: {
       entryFileNames: 'client.js',
       banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`,
