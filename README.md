@@ -49,13 +49,14 @@ Tell the agent something like:
 
 > 连 192.168.1.10 需要密码，用 password_prompt 问我要。
 
-The agent calls `password_prompt`, the masked panel pops up, you type, and the agent continues with the value. The tool result is rendered **redacted** in the chat transcript; the value itself exists only in the agent's working context and whatever command it is passed to.
+The agent calls `password_prompt`, the masked panel pops up, you type, and the agent continues. **The value never enters the model context**: the tool writes it to the private 0600 file the agent named (`outFile`, e.g. `<cwd>/.dsh-secrets/ssh-pass`) and returns only that path. The agent feeds the command from the file — an askpass script that `cat`s it for SSH, `sudo -S < file` for sudo — then deletes the file. The model cannot echo a secret it never possessed.
 
 ## Security notes
 
-- The password travels: browser → host RPC → agent tool result. It appears in the **session transcript/log in the model's context** and in any command that uses it (e.g. an askpass script). It is *not* stored by this plugin, and the visible chat card is redacted — but treat the value as readable by the model and by anything with access to the session log.
+- **The password never reaches the model.** It travels browser → host RPC → a private 0600 file on disk, and the model sees only the file path. It therefore cannot appear in reasoning or chat output.
+- The file holds the value in plaintext (mode 0600, same user only) for the short window until the consuming command finishes; the agent is instructed to delete it immediately, and the panel card shows only the path.
 - Prefer SSH keys over passwords whenever possible. This plugin is for the cases where a password is unavoidable.
-- The panel is a **convenience, not a vault**: no encryption, no persistence, no autofill store.
+- The panel is a **convenience, not a vault**: no encryption, no persistence, no autofill store. The host process (and anyone with access to the disk) can read the file while it exists.
 
 ## Building from source
 
