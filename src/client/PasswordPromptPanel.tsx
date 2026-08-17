@@ -3,6 +3,11 @@
  * takeover card in the DSH Web GUI. Input is masked, autofocused, submitted
  * with Enter, cancellable with Escape, with a show/hide toggle.
  *
+ * In account+password mode (two reserved questions `account` + `password`)
+ * the same card renders an account text field plus the masked password field;
+ * Enter moves from the account field to the password field, and the answer is
+ * delivered as the standard two-question batch.
+ *
  * Styling rides the DSW theme tokens (the same --dsw-alias-* variables the
  * shipped UI uses) through a single injected <style> element, so the panel
  * matches the active theme without importing the shared ui-primitives
@@ -43,24 +48,49 @@ function EyeIcon({ off }: { off: boolean }) {
 }
 
 /**
- * The password panel: one masked input over one prompt. Answers or cancels
- * through the pending wait carrier; the busy state guards double submission.
+ * The password panel: one masked input over one prompt, or an account field
+ * plus a masked input in credentials mode. Answers or cancels through the
+ * pending wait carrier; the busy state guards double submission.
  * @param props - the selector-matched password wait plus the framework kit.
  */
 export function PasswordPromptPanel({ matched }: PasswordPromptProps) {
   // Domain-face mint rides the carrier's stable identity (never minted in a
   // select/render dispatch — per-dispatch minting would churn memo identity).
   const pending = useMemo(() => new PendingPassword(matched), [matched])
+  const credentialMode = pending.mode === 'credentials'
   const [value, setValue] = useState('')
+  const [account, setAccount] = useState('')
   const [reveal, setReveal] = useState(false)
   const [busy, setBusy] = useState<'answer' | 'cancel' | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const accountRef = useRef<HTMLInputElement>(null)
 
   const submit = (): void => {
     const password = value
+    if (credentialMode) {
+      const accountValue = account.trim()
+      if (accountValue === '') {
+        setError('Account cannot be empty')
+        accountRef.current?.focus()
+        return
+      }
+      if (password === '') {
+        setError('Password cannot be empty')
+        passwordRef.current?.focus()
+        return
+      }
+      setBusy('answer')
+      setError(null)
+      void pending.answerCredentials(accountValue, password).catch((cause: unknown) => {
+        setBusy(null)
+        setError(cause instanceof Error ? cause.message : String(cause))
+      })
+      return
+    }
     if (password === '') {
       setError('Password cannot be empty')
+      passwordRef.current?.focus()
       return
     }
     setBusy('answer')
@@ -80,7 +110,13 @@ export function PasswordPromptPanel({ matched }: PasswordPromptProps) {
     })
   }
 
-  const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+  const onAccountKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    if (busy === null) passwordRef.current?.focus()
+  }
+
+  const onPasswordKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key !== 'Enter') return
     event.preventDefault()
     if (busy === null) submit()
@@ -101,7 +137,7 @@ export function PasswordPromptPanel({ matched }: PasswordPromptProps) {
       >
         <header className="dshpp-header">
           <div className="dshpp-heading">
-            <div className="dshpp-eyebrow">Password required</div>
+            <div className="dshpp-eyebrow">{credentialMode ? 'Account & password required' : 'Password required'}</div>
             <h2 className="dshpp-title" id={`dshpp-title-${pending.key}`}>{pending.prompt}</h2>
           </div>
           <button
@@ -118,36 +154,66 @@ export function PasswordPromptPanel({ matched }: PasswordPromptProps) {
         </header>
 
         <div className="dshpp-body">
-          <div className="dshpp-field">
-            <input
-              ref={inputRef}
-              type={reveal ? 'text' : 'password'}
-              className="dshpp-input"
-              value={value}
-              disabled={busy !== null}
-              placeholder="••••••••"
-              autoFocus
-              autoComplete="off"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              onChange={event => { setValue(event.target.value); setError(null) }}
-              onKeyDown={onInputKeyDown}
-            />
-            <button
-              type="button" className="dshpp-toggle" tabIndex={-1}
-              aria-label={reveal ? 'Hide password' : 'Show password'}
-              title={reveal ? 'Hide password' : 'Show password'}
-              disabled={busy !== null}
-              onClick={() => setReveal(current => !current)}
-            >
-              <EyeIcon off={reveal} />
-            </button>
+          {credentialMode && (
+            <div className="dshpp-fieldGroup">
+              <label className="dshpp-label" htmlFor={`dshpp-account-${pending.key}`}>{pending.accountQuestion}</label>
+              <div className="dshpp-field">
+                <input
+                  ref={accountRef}
+                  id={`dshpp-account-${pending.key}`}
+                  type="text"
+                  className="dshpp-input"
+                  value={account}
+                  disabled={busy !== null}
+                  placeholder="Account or username"
+                  autoFocus
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  onChange={event => { setAccount(event.target.value); setError(null) }}
+                  onKeyDown={onAccountKeyDown}
+                />
+              </div>
+            </div>
+          )}
+          <div className="dshpp-fieldGroup">
+            {credentialMode && (
+              <label className="dshpp-label" htmlFor={`dshpp-password-${pending.key}`}>{pending.passwordQuestion}</label>
+            )}
+            <div className="dshpp-field">
+              <input
+                ref={passwordRef}
+                id={`dshpp-password-${pending.key}`}
+                type={reveal ? 'text' : 'password'}
+                className="dshpp-input"
+                value={value}
+                disabled={busy !== null}
+                placeholder={credentialMode ? 'Password' : '••••••••'}
+                autoFocus={!credentialMode}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={event => { setValue(event.target.value); setError(null) }}
+                onKeyDown={onPasswordKeyDown}
+              />
+              <button
+                type="button" className="dshpp-toggle" tabIndex={-1}
+                aria-label={reveal ? 'Hide password' : 'Show password'}
+                title={reveal ? 'Hide password' : 'Show password'}
+                disabled={busy !== null}
+                onClick={() => setReveal(current => !current)}
+              >
+                <EyeIcon off={reveal} />
+              </button>
+            </div>
           </div>
           {error !== null && <div className="dshpp-error" role="status">{error}</div>}
           <p className="dshpp-note">
-            The value is sent to the agent and used only for the command it was requested for.
-            It is not stored by this plugin.
+            {credentialMode
+              ? 'The account is returned to the agent. The password is written to a private 0600 file and the agent sees only its path. Nothing is stored by this plugin.'
+              : 'The password is written to a private 0600 file and the agent sees only its path. It is not stored by this plugin.'}
           </p>
         </div>
 
@@ -162,7 +228,8 @@ export function PasswordPromptPanel({ matched }: PasswordPromptProps) {
             </button>
             <button
               type="button" className="dshpp-button dshpp-primary"
-              disabled={busy !== null || value === ''} onClick={submit}
+              disabled={busy !== null || value === '' || (credentialMode && account.trim() === '')}
+              onClick={submit}
             >
               {busy === 'answer' ? 'Submitting…' : 'Submit'}
             </button>
@@ -238,6 +305,14 @@ const PANEL_CSS = `
 }
 .dshpp-iconButton:disabled { color: var(--dsw-alias-label-dimmed); cursor: default; }
 .dshpp-body { padding: 14px 24px 0; }
+.dshpp-fieldGroup + .dshpp-fieldGroup { margin-top: 10px; }
+.dshpp-label {
+  display: block;
+  margin: 0 0 6px 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
 .dshpp-field {
   display: flex;
   align-items: center;

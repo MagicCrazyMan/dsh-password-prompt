@@ -1,8 +1,8 @@
 # dsh-password-prompt
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that lets an agent ask the user for a password through a **masked HTML password panel** in the Web GUI — no interactive terminal required.
+A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that lets an agent ask the user for a password through a **masked HTML password panel** in the Web GUI — or for an **account + password** through the same panel with an extra account field — no interactive terminal required.
 
-When the agent calls the `password_prompt` tool, the browser pops the panel and waits. The user types the password (masked, with a show/hide toggle), and the value is returned to the agent, which can then use it — e.g. feed it to `ssh` through an askpass script.
+When the agent calls the `password_prompt` tool, the browser pops the panel and waits. The user types the password (masked, with a show/hide toggle); with `account: true` the panel also shows an account field. The password is written to a private 0600 file and only its path is returned to the agent; the account is returned in the clear. The agent can then use them — e.g. feed the password to `ssh` through an askpass script.
 
 ## ⚠️ SECURITY WARNING — READ BEFORE USE
 
@@ -18,7 +18,14 @@ agent calls password_prompt("SSH password for root@1.2.3.4")
       └─ host → browser: question/requested frame
           └─ this plugin's composer entry (priority -1) claims it
               └─ masked panel renders in the GUI
-                  └─ user types → answer flows back → tool returns { password }
+                  └─ user types → answer flows back → tool returns { secretFile }
+
+agent calls password_prompt("SSH login for 1.2.3.4", account: true)
+  └─ ctx.userQuestions.ask({ id: 'account', ... }, { id: 'password', ... })
+      └─ host → browser: question/requested frame
+          └─ this plugin's composer entry (priority -1) claims it
+              └─ account + masked-password panel renders in the GUI
+                  └─ user types both → answer flows back → tool returns { account, secretFile }
 ```
 
 ## Why this needs no DSH core changes
@@ -26,7 +33,7 @@ agent calls password_prompt("SSH password for root@1.2.3.4")
 The plugin only uses public, shipped capability seams:
 
 - `ctx.userQuestions.ask()` — the same service behind the built-in `ask_user_question` tool (pauses the tool call until the UI answers).
-- The browser `conversation.composer` chain — a selector-routed slot; this plugin registers an entry at priority `-1` that claims single questions whose id is the reserved literal `password`, and every other question falls through to the generic composer untouched.
+- The browser `conversation.composer` chain — a selector-routed slot; this plugin registers an entry at priority `-1` that claims a single question whose id is the reserved literal `password`, or two questions whose ids are the reserved literals `account` and `password` (in that order), and every other question falls through to the generic composer untouched.
 - The dual-face plugin convention: a package declaring `dsh.client` + an `exports["./client"]` bundle is auto-scanned into `window.__DSH_BOOT__` and served at `/plugins/<id>/client.js`.
 - The `dsh.bundle` manifest: a `cordis.patch.yml` layer shipped inside the package, so `dsh plugin add` appends the plugin to the profile's bundle list and the `password-prompt` row activates with no manual patch edits.
 
@@ -127,8 +134,9 @@ ln -s /path/to/dsh-password-prompt ~/.dsh/profiles/node_modules/dsh-password-pro
 Tell the agent something like:
 
 > 连 192.168.1.10 需要密码，用 password_prompt 问我要。
+> 连 192.168.1.10 的账号密码都问我。
 
-The agent calls `password_prompt`, the masked panel pops up, you type, and the agent continues. **The value never enters the model context**: the tool writes it to the private 0600 file the agent named (`outFile`, e.g. `<cwd>/.dsh-secrets/ssh-pass`) and returns only that path. The agent feeds the command from the file — an askpass script that `cat`s it for SSH, `sudo -S < file` for sudo — then deletes the file. The model cannot echo a secret it never possessed.
+The agent calls `password_prompt`, the masked panel pops up, you type, and the agent continues. **The password never enters the model context**: the tool writes it to the private 0600 file the agent named (`outFile`, e.g. `<cwd>/.dsh-secrets/ssh-pass`) and returns only that path. The agent feeds the command from the file — an askpass script that `cat`s it for SSH, `sudo -S < file` for sudo — then deletes the file. If the agent needs an account/username too, it calls `password_prompt` with `account: true`; the panel asks for both, the account is returned to the agent in the clear, and the password still stays file-only. The model cannot echo a secret it never possessed.
 
 ## Optional: companion skill
 
@@ -143,8 +151,8 @@ The skill is user-level (rank 400), so it applies to every profile/project. It s
 
 ## Security notes
 
-- **The password never reaches the model.** It travels browser → host RPC → a private 0600 file on disk, and the model sees only the file path. It therefore cannot appear in reasoning or chat output.
-- The file holds the value in plaintext (mode 0600, same user only) for the short window until the consuming command finishes; the agent is instructed to delete it immediately, and the panel card shows only the path.
+- **The password never reaches the model.** It travels browser → host RPC → a private 0600 file on disk, and the model sees only the file path. It therefore cannot appear in reasoning or chat output. In account+password mode the account is returned to the model in the clear (accounts are treated as non-secret); the password remains file-only.
+- The file holds the password in plaintext (mode 0600, same user only) for the short window until the consuming command finishes; the agent is instructed to delete it immediately, and the panel card shows only the path.
 - Prefer SSH keys over passwords whenever possible. This plugin is for the cases where a password is unavoidable.
 - The panel is a **convenience, not a vault**: no encryption, no persistence, no autofill store. The host process (and anyone with access to the disk) can read the file while it exists.
 

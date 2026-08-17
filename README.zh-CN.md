@@ -1,8 +1,8 @@
 # dsh-password-prompt
 
-一个 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 插件，让智能体（agent）可以通过 Web GUI 中的**掩码 HTML 密码面板**向用户索要密码——无需交互式终端。
+一个 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 插件，让智能体（agent）可以通过 Web GUI 中的**掩码 HTML 密码面板**向用户索要密码，或通过同一个面板的账号输入框索要**账号 + 密码**——无需交互式终端。
 
-当智能体调用 `password_prompt` 工具时，浏览器会弹出面板并等待。用户输入密码（掩码显示，带显示/隐藏切换），值被返回给智能体，智能体随后即可使用它——例如通过 askpass 脚本把它喂给 `ssh`。
+当智能体调用 `password_prompt` 工具时，浏览器会弹出面板并等待。用户输入密码（掩码显示，带显示/隐藏切换）；当智能体传入 `account: true` 时，面板还会显示账号输入框。密码被写入私有 0600 权限文件、只把路径返回给智能体；账号则以明文返回。智能体随后即可使用它们——例如通过 askpass 脚本把密码喂给 `ssh`。
 
 ## ⚠️ 安全警告 —— 使用前必读
 
@@ -20,7 +20,14 @@ agent calls password_prompt("SSH password for root@1.2.3.4")
       └─ host → browser: question/requested frame
           └─ this plugin's composer entry (priority -1) claims it
               └─ masked panel renders in the GUI
-                  └─ user types → answer flows back → tool returns { password }
+                  └─ user types → answer flows back → tool returns { secretFile }
+
+agent calls password_prompt("SSH login for 1.2.3.4", account: true)
+  └─ ctx.userQuestions.ask({ id: 'account', ... }, { id: 'password', ... })
+      └─ host → browser: question/requested frame
+          └─ this plugin's composer entry (priority -1) claims it
+              └─ account + masked-password panel renders in the GUI
+                  └─ user types both → answer flows back → tool returns { account, secretFile }
 ```
 
 ## 为什么无需修改 DSH 核心
@@ -28,7 +35,7 @@ agent calls password_prompt("SSH password for root@1.2.3.4")
 该插件仅使用随发行版提供的公开能力接口（seam）：
 
 - `ctx.userQuestions.ask()` —— 与内置 `ask_user_question` 工具背后的同一个服务（在 UI 应答前暂停工具调用）。
-- 浏览器端的 `conversation.composer` 链 —— 一个基于选择器路由的插槽；本插件注册了一个优先级为 `-1` 的条目，认领 id 为保留字面量 `password` 的单个问题，其余所有问题都会原样落到通用 composer 上，不受影响。
+- 浏览器端的 `conversation.composer` 链 —— 一个基于选择器路由的插槽；本插件注册了一个优先级为 `-1` 的条目，认领 id 为保留字面量 `password` 的单个问题（以及 id 依次为 `account`、`password` 的两个问题），其余所有问题都会原样落到通用 composer 上，不受影响。
 - 双面（dual-face）插件约定：声明了 `dsh.client` 且带 `exports["./client"]` 包的包会被自动扫描进 `window.__DSH_BOOT__`，并以 `/plugins/<id>/client.js` 提供服务。
 - `dsh.bundle` 清单：包内随附一份 `cordis.patch.yml` 补丁层，因此 `dsh plugin add` 会把插件追加到 profile 的 bundle 列表，`password-prompt` 行自动激活，无需手工修改补丁。
 
@@ -129,8 +136,9 @@ ln -s /path/to/dsh-password-prompt ~/.dsh/profiles/node_modules/dsh-password-pro
 对智能体说类似这样的话：
 
 > 连 192.168.1.10 需要密码，用 password_prompt 问我要。
+> 连 192.168.1.10 的账号密码都问我。
 
-智能体调用 `password_prompt`，掩码面板弹出，你输入密码，智能体继续执行。**密码值永远不会进入模型上下文**：该工具将其写入智能体指定的私有 0600 权限文件（`outFile`，例如 `<cwd>/.dsh-secrets/ssh-pass`），并且只返回该路径。智能体从文件中读取密码来执行命令——SSH 使用 `cat` 出密码的 askpass 脚本，sudo 使用 `sudo -S < file`——随后删除该文件。模型从未持有过密钥，自然无法复述它。
+智能体调用 `password_prompt`，掩码面板弹出，你输入密码，智能体继续执行。**密码值永远不会进入模型上下文**：该工具将其写入智能体指定的私有 0600 权限文件（`outFile`，例如 `<cwd>/.dsh-secrets/ssh-pass`），并且只返回该路径。智能体从文件中读取密码来执行命令——SSH 使用 `cat` 出密码的 askpass 脚本，sudo 使用 `sudo -S < file`——随后删除该文件。如果智能体还需要账号/用户名，它会以 `account: true` 调用 `password_prompt`；面板会同时询问账号和密码，账号以明文返回给智能体，密码仍然只写入文件。模型从未持有过密钥，自然无法复述它。
 
 ## 可选：配套 skill
 
@@ -145,8 +153,8 @@ cp skills/password-prompt/SKILL.md ~/.dsh/skills/password-prompt/SKILL.md
 
 ## 安全说明
 
-- **密码永远到不了模型那里。** 它经由浏览器 → 主机 RPC → 磁盘上的私有 0600 权限文件这一路径传输，模型只能看到文件路径，因此它不可能出现在推理过程或聊天输出中。
-- 在消费命令执行完之前的这段短暂窗口内，文件以明文（0600 权限，仅同用户可读）保存；智能体被指示在命令结束后立即删除它，面板卡片也只显示路径。
+- **密码永远到不了模型那里。** 它经由浏览器 → 主机 RPC → 磁盘上的私有 0600 权限文件这一路径传输，模型只能看到文件路径，因此它不可能出现在推理过程或聊天输出中。账号 + 密码模式下，账号会以明文返回给模型（账号视为非机密）；密码仍然只进文件。
+- 在消费命令执行完之前的这段短暂窗口内，密码文件以明文（0600 权限，仅同用户可读）保存；智能体被指示在命令结束后立即删除它，面板卡片也只显示路径。
 - 尽可能优先使用 SSH 密钥而非密码。本插件用于那些密码不可避免的场景。
 - 这个面板是**便利设施，而非保险库**：没有加密、没有持久化、没有自动填充存储。文件存在期间，主机进程（以及任何能访问磁盘的人）都能读取它。
 

@@ -1,11 +1,11 @@
 ---
 name: password-prompt
-description: Use whenever a task needs a password, passphrase, SSH/sudo/remote login, API token, or any other secret input — including when a command fails with "Permission denied" or an authentication error. Route every such secret through the password_prompt panel; never ask for or handle passwords in plain chat, command arguments, or environment variables.
+description: Use whenever a task needs a password, passphrase, SSH/sudo/remote login, API token, or any other secret input — including when a command fails with "Permission denied" or an authentication error. Route every such secret through the password_prompt panel; never ask for or handle passwords in plain chat, command arguments, or environment variables. When the command also needs an account/username, call the same tool with account: true so the panel asks for both.
 ---
 
 # Handling passwords with the password_prompt panel
 
-Whenever a step needs a secret (SSH/sudo/remote login, passphrase, token, …), ask for it through the `password_prompt` tool instead of plain chat or command-line arguments. The panel is masked; the value is written to a private 0600 file; only the file path is returned. You never see the secret itself.
+Whenever a step needs a secret (SSH/sudo/remote login, passphrase, token, …), ask for it through the `password_prompt` tool instead of plain chat or command-line arguments. The panel is masked; the password is written to a private 0600 file; only the file path is returned. You never see the password itself.
 
 ## When to trigger
 
@@ -16,11 +16,15 @@ Whenever a step needs a secret (SSH/sudo/remote login, passphrase, token, …), 
 
 ## Procedure
 
-1. Call `password_prompt` with a clear prompt (what the password is for) and an `outFile` inside the working directory, e.g. `<cwd>/.dsh-secrets/<name>`.
-2. Pass the file path **only** to the single command that consumes the secret:
-   - SSH: an askpass script that `cat`s the file, e.g.
-     `printf '#!/bin/bash\ncat %q\n' "$file" > askpass.sh && chmod +x askpass.sh && SSH_ASKPASS="$PWD/askpass.sh" SSH_ASKPASS_REQUIRE=force ssh -F /dev/null -p PORT user@host "command"`
-   - sudo: `sudo -S < "$file" command`
+1. Decide what the command needs:
+   - **Password only** (the username is already known): call `password_prompt` with `prompt` and `outFile`.
+   - **Account + password** (the command also needs a username/account you do not know yet): call `password_prompt` with `account: true`, plus `prompt` and `outFile`. The panel asks for both; the account is returned to you in the result, the password is still only written to the file.
+2. Use the result:
+   - Password file path **only** to the single command that consumes the secret:
+     - SSH: an askpass script that `cat`s the file, e.g.
+       `printf '#!/bin/bash\ncat %q\n' "$file" > askpass.sh && chmod +x askpass.sh && SSH_ASKPASS="$PWD/askpass.sh" SSH_ASKPASS_REQUIRE=force ssh -F /dev/null -p PORT user@host "command"`
+     - sudo: `sudo -S < "$file" command`
+   - Account: use the returned account string to build the command (e.g. `ssh "$account"@host ...`).
 3. Delete the file (and any askpass script) as soon as the consuming command finishes — in the same turn.
 4. Never read, print, or echo the secret; never put it in command arguments, environment variables, shell history, logs, or notes; never reuse it from memory — call `password_prompt` again if you need it later.
 
